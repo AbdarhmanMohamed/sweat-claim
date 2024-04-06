@@ -119,7 +119,6 @@ impl Contract {
         let account = self.accounts.get_account_mut(&account_id);
         account.is_locked = false;
 
-        // [nit]
         if !is_success {
             account.balance = amount_to_claim + amount_to_burn;
             return ClaimResultView::new(0);
@@ -184,27 +183,29 @@ mod prod {
             amount_to_claim: TokensAmount,
             amount_to_burn: TokensAmount,
         ) -> PromiseOrValue<ClaimResultView> {
+            if amount_to_claim == 0 {
+                let claim_result = self.on_transfer_internal(now, account_id, amount_to_claim, amount_to_burn, true);
+
+                return PromiseOrValue::Value(claim_result);
+            }
+
+            let args = json!({
+                "receiver_id": account_id.clone(),
+                "amount": amount_to_claim.to_string(),
+                "memo": "",
+            })
+            .to_string()
+            .as_bytes()
+            .to_vec();
+
             let callback = ext_self::ext(env::current_account_id())
                 .with_static_gas(Gas(5 * Gas::ONE_TERA.0))
                 .on_transfer(now, account_id.clone(), amount_to_claim, amount_to_burn);
 
-            if amount_to_claim > 0 {
-                let args = json!({
-                    "receiver_id": account_id.clone(),
-                    "amount": amount_to_claim.to_string(),
-                    "memo": "",
-                })
-                .to_string()
-                .as_bytes()
-                .to_vec();
-
-                Promise::new(self.token_account_id.clone())
-                    .function_call("ft_transfer".to_string(), args, 1, Gas(5 * Gas::ONE_TERA.0))
-                    .then(callback)
-                    .into()
-            } else {
-                callback.into()
-            }
+            Promise::new(self.token_account_id.clone())
+                .function_call("ft_transfer".to_string(), args, 1, Gas(5 * Gas::ONE_TERA.0))
+                .then(callback)
+                .into()
         }
     }
 }

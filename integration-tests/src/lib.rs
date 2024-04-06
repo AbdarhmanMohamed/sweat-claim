@@ -2,7 +2,7 @@
 
 use anyhow::Result;
 use claim_model::{
-    api::{BurnApiIntegration, ClaimApiIntegration},
+    api::{BurnApiIntegration, ClaimApiIntegration, ConfigApiIntegration},
     ClaimAvailabilityView,
 };
 use near_sdk::{
@@ -27,6 +27,13 @@ async fn happy_flow() -> anyhow::Result<()> {
 
     let alice = context.alice().await?;
     let manager = context.manager().await?;
+
+    let claim_period_minutes = 5;
+    context
+        .sweat_claim()
+        .set_claim_period(claim_period_minutes * 60)
+        .with_user(&manager)
+        .await?;
 
     let alice_steps = 10_000;
     let alice_initial_balance = context.ft_contract().ft_balance_of(alice.to_near()).await?;
@@ -59,12 +66,10 @@ async fn happy_flow() -> anyhow::Result<()> {
     let is_claim_available = context.sweat_claim().is_claim_available(alice.to_near()).await?;
     assert!(matches!(is_claim_available, ClaimAvailabilityView::Unavailable(_)));
 
-    context
-        .fast_forward_hours((CLAIM_PERIOD / (60 * 60) + 1) as u64)
-        .await?;
+    context.fast_forward_minutes((claim_period_minutes + 1) as u64).await?;
 
     let is_claim_available = context.sweat_claim().is_claim_available(alice.to_near()).await?;
-    assert_eq!(is_claim_available, ClaimAvailabilityView::Available(1));
+    assert_eq!(is_claim_available, ClaimAvailabilityView::Available(0));
 
     context.sweat_claim().claim().with_user(&alice).await?;
 
@@ -81,6 +86,20 @@ async fn burn() -> anyhow::Result<()> {
 
     let manager = context.manager().await?;
     let alice = context.alice().await?;
+
+    let claim_period_minutes = 5;
+    context
+        .sweat_claim()
+        .set_claim_period(claim_period_minutes * 60)
+        .with_user(&manager)
+        .await?;
+
+    let burn_period_minutes = 10;
+    context
+        .sweat_claim()
+        .set_burn_period(burn_period_minutes * 60)
+        .with_user(&manager)
+        .await?;
 
     let alice_steps = 10_000;
 
@@ -106,16 +125,16 @@ async fn burn() -> anyhow::Result<()> {
     let burn_result = context.sweat_claim().burn().with_user(&manager).await?;
     assert_eq!(0, burn_result.0);
 
-    context.fast_forward_hours((BURN_PERIOD / (60 * 60) + 1) as u64).await?;
+    context.fast_forward_minutes((burn_period_minutes + 1) as u64).await?;
+
+    let burn_result = context.sweat_claim().burn().with_user(&manager).await?;
+    assert_eq!(0, burn_result.0);
+
+    let alice_claimable_balance = context.sweat_claim().claim().with_user(&alice).await?;
+    assert_eq!(0, alice_claimable_balance.total.0);
 
     let burn_result = context.sweat_claim().burn().with_user(&manager).await?;
     assert_eq!(target_payout.amount_for_user, burn_result.0);
-
-    let alice_deferred_balance = context
-        .sweat_claim()
-        .get_claimable_balance_for_account(alice.to_near())
-        .await?;
-    assert_eq!(0, alice_deferred_balance.0);
 
     Ok(())
 }
