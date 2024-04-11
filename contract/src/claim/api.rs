@@ -37,7 +37,18 @@ impl ClaimApi for Contract {
 
         if let Some(account) = self.accounts.get(&account_id) {
             let account = account.into_latest();
-            return U128(account.get_effective_balance(now, self.burn_period));
+
+            let amount_to_burn = if !account
+                .claim_period_refreshed_at
+                .is_within_period(now, self.burn_period)
+            {
+                account.burn_rate * (now - account.last_burn_at) as u128
+            } else {
+                0
+            };
+            let amount_to_claim = account.balance - amount_to_burn;
+
+            return U128(amount_to_claim);
         }
 
         U128(0)
@@ -93,8 +104,16 @@ impl ClaimApi for Contract {
 
         if account_data.balance > 0 {
             let now = now_seconds();
-            let amount_to_claim = account_data.get_effective_balance(now, self.burn_period);
-            let amount_to_burn = account_data.balance - amount_to_claim;
+
+            let amount_to_burn = if !account_data
+                .claim_period_refreshed_at
+                .is_within_period(now, self.burn_period)
+            {
+                account_data.burn_rate * (now - account_data.last_burn_at) as u128
+            } else {
+                0
+            };
+            let amount_to_claim = account_data.balance - amount_to_burn;
 
             let account_data = self.accounts.get_account_mut(&account_id);
             account_data.is_locked = true;
@@ -119,7 +138,6 @@ impl Contract {
         let account = self.accounts.get_account_mut(&account_id);
         account.is_locked = false;
 
-        // [nit]
         if !is_success {
             account.balance = amount_to_claim + amount_to_burn;
             return ClaimResultView::new(0);
@@ -130,6 +148,7 @@ impl Contract {
         self.balance_to_burn += amount_to_burn;
 
         account.claim_period_refreshed_at = now;
+        account.last_burn_at = now;
 
         let event_data = ClaimData {
             account_id,

@@ -60,14 +60,6 @@ impl Contract {
             return;
         };
 
-        let last_top_up_at = account
-            .accruals
-            .iter()
-            .map(|(datetime, _)| datetime)
-            .max()
-            .copied()
-            .unwrap_or_default();
-
         let balance = account
             .accruals
             .iter()
@@ -80,7 +72,7 @@ impl Contract {
             })
             .sum();
 
-        let account = AccountRecordVersioned::from_legacy(&account, balance, last_top_up_at);
+        let account = AccountRecordVersioned::from_legacy(&account, balance, self.burn_period);
         self.accounts.insert(account_id.clone(), account);
     }
 }

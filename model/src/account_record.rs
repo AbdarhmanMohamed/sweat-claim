@@ -5,7 +5,7 @@ use near_sdk::{
     borsh::{BorshDeserialize, BorshSerialize},
 };
 
-use crate::{AccrualIndex, TokensAmount, UnixTimestamp};
+use crate::{AccrualIndex, Duration, TokensAmount, UnixTimestamp};
 
 /// Represents the state of a registered account in the smart contract.
 ///
@@ -76,18 +76,21 @@ pub enum AccountRecordVersioned {
 #[derive(BorshDeserialize, BorshSerialize)]
 pub struct AccountRecordV1 {
     pub balance: TokensAmount,
-    pub last_top_up_at: UnixTimestamp,
+    /// How many tokens burn per second.
+    pub burn_rate: TokensAmount,
+    pub last_burn_at: UnixTimestamp,
     pub claim_period_refreshed_at: UnixTimestamp,
     pub is_enabled: bool,
     pub is_locked: bool,
 }
 
 impl AccountRecordVersioned {
-    pub fn from_legacy(account: &AccountRecordLegacy, balance: TokensAmount, last_top_up_at: UnixTimestamp) -> Self {
+    pub fn from_legacy(account: &AccountRecordLegacy, balance: TokensAmount, burn_period: Duration) -> Self {
         Self::V1(AccountRecordV1 {
             balance,
-            last_top_up_at,
+            burn_rate: balance / burn_period as u128,
             claim_period_refreshed_at: account.claim_period_refreshed_at,
+            last_burn_at: account.claim_period_refreshed_at,
             is_enabled: account.is_enabled,
             is_locked: account.is_locked,
         })
@@ -111,8 +114,9 @@ impl AccountRecord {
     pub fn new(now: UnixTimestamp) -> Self {
         Self {
             balance: 0,
+            burn_rate: 0,
             claim_period_refreshed_at: now,
-            last_top_up_at: now,
+            last_burn_at: now,
             is_enabled: true,
             is_locked: false,
         }
